@@ -18,6 +18,7 @@ from stable_baselines3 import PPO, A2C
 from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.callbacks import BaseCallback
+from stable_baselines3.common.callbacks import CallbackList
 
 # Gymnasium environment wrapper around Grid2Op environment
 class Gym2OpEnv(gym.Env):
@@ -104,6 +105,7 @@ class Gym2OpEnv(gym.Env):
         return self._gym_env.render(mode=mode)
 
 class RewardLoggerCallback(BaseCallback):
+
     def __init__(self, verbose=0):
         super(RewardLoggerCallback, self).__init__(verbose)
         self.episode_rewards = []
@@ -126,6 +128,28 @@ class RewardLoggerCallback(BaseCallback):
 
     def get_rewards(self):
         return self.episode_rewards
+    
+class EpisodeLengthLoggerCallback(BaseCallback):
+    def __init__(self, verbose=0):
+        super(EpisodeLengthLoggerCallback, self).__init__(verbose)
+        self.episode_lengths = []
+        self.current_length = 0
+
+    def _on_step(self) -> bool:
+        # Increment the step count
+        self.current_length += 1
+
+        # Check if the episode is done, then log the episode length
+        done = self.locals['dones']
+        if done:
+            self.episode_lengths.append(self.current_length)
+            self.current_length = 0  # Reset for the next episode
+            if self.verbose > 0:
+                print(f"Episode length: {self.episode_lengths[-1]}")
+        return True
+
+    def get_lengths(self):
+        return self.episode_lengths
 
 def create_env(max_steps):
     return Monitor(Gym2OpEnv(max_steps))
@@ -134,28 +158,36 @@ def train(model_class, model_name, env, total_timesteps=25000):
     print('Training ' + model_name)
 
     reward_logger = RewardLoggerCallback()
+    length_logger = EpisodeLengthLoggerCallback()
+
+    callback_list = CallbackList([reward_logger, length_logger])
 
     model = model_class("MultiInputPolicy", env, verbose=1)
-    model.learn(total_timesteps=total_timesteps, callback=reward_logger)
+    model.learn(total_timesteps=total_timesteps, callback=callback_list)
     model.save(f"baseline/{model_name}")
 
     print('Completed Training ' + model_name)
     
-    # Plotting rewards after training
+    # Plotting rewards and Episode lengths after training
     rewards = reward_logger.get_rewards()
+    episode_lengths = length_logger.get_lengths()
 
-    return model, rewards
+    return model, rewards, episode_lengths
 
 def evaluate(env, model, n_episodes=10, random_agent=False):
     
     print('Evaluating agent')
 
     rewards = []
+    episode_lengths = []
+
     for _ in range(n_episodes):
         episode_reward = 0
+        steps = 0
         done = False
         obs = env.reset()[0]
         while not done:
+            steps += 1
             if (random_agent):
                 action = env.action_space.sample()
             else:
@@ -165,13 +197,14 @@ def evaluate(env, model, n_episodes=10, random_agent=False):
             done = terminated or truncated
 
         rewards.append(episode_reward)
+        episode_lengths.append(steps)
     
     mean_reward = np.mean(rewards)
     std_reward = np.std(rewards)
-    
+     
     print('Completed evaluating agent')
 
-    return mean_reward, std_reward
+    return mean_reward, std_reward, episode_lengths
 
 def plot_returns(random_return, ppo_return, a2c_return):
     agents = ['Random', 'PPO', 'A2C']
@@ -198,34 +231,51 @@ def plot_returns(random_return, ppo_return, a2c_return):
     plt.savefig('plots/agent_reward.png')
     plt.close()
 
+def plot_episode_lengths(random_length, ppo_length, a2c_length):
+
+    # Line plot for episode lengths over time
+    plt.figure(figsize=(10, 6))
+    plt.plot(ppo_length, label='PPO', marker='o', linestyle='-')
+    plt.plot(a2c_length, label='A2C', marker='s', linestyle='-')
+    plt.plot(random_length, label='Random', marker='x', linestyle='-')
+    plt.xlabel('Episodes')
+    plt.ylabel('Episode Length')
+    plt.title('Episode Length Over Time for PPO, A2C and Random Agents')
+    plt.legend()
+    plt.savefig('plots/episode_length_over_time.png')
+    plt.close()
+
 def main():
     max_steps = 100
     env = create_env(max_steps)
     vec_env = make_vec_env(lambda: env, n_envs=1)
 
+    ppo_reward = 0
+    a2c_reward = 0
     # Train PPO
     if not os.path.exists('baseline/ppo_grid2op.zip'):
-        ppo_model, ppo_reward = train(PPO, "ppo_grid2op", vec_env)
+        ppo_model, ppo_reward, ppo_length = train(PPO, "ppo_grid2op", vec_env)
     else:
         ppo_model = PPO.load('baseline/ppo_grid2op.zip', env=env)
 
     # Train A2C
     if not os.path.exists('baseline/a2c_grid2op.zip'):
-        a2c_model, a2c_reward = train(A2C, "a2c_grid2op", vec_env)
+        a2c_model, a2c_reward, a2c_length = train(A2C, "a2c_grid2op", vec_env)
     else:
         a2c_model = A2C.load('baseline/a2c_grid2op.zip', env=env)
     
     # Evaluate PPO
-    ppo_mean, ppo_std = evaluate(env, ppo_model)
+    ppo_mean, ppo_std, ppo_episode_lengths = evaluate(env, ppo_model)
 
     # Evaluate A2C
-    a2c_mean, a2c_std = evaluate(env, a2c_model)
+    a2c_mean, a2c_std, a2c_episode_lengths = evaluate(env, a2c_model)
 
     # Evaluate Random
-    random_mean, random_std = evaluate(env, None, random_agent=True)
+    random_mean, random_std, random_episode_lengths = evaluate(env, None, random_agent=True)
 
     # Plot returns
     plot_returns((random_mean, random_std), (ppo_mean, ppo_std, ppo_reward), (a2c_mean, a2c_std, a2c_reward))
+    plot_episode_lengths(random_episode_lengths, ppo_episode_lengths, a2c_episode_lengths)
 
 if __name__ == "__main__":
     main()

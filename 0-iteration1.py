@@ -18,6 +18,7 @@ from stable_baselines3 import PPO, A2C
 from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.evaluation import evaluate_policy
 from stable_baselines3.common.monitor import Monitor
+from stable_baselines3.common.callbacks import CallbackList
 
 # Gymnasium environment wrapper around Grid2Op environment
 class Gym2OpEnv(gym.Env):
@@ -140,8 +141,20 @@ class Gym2OpEnv(gym.Env):
         dynamic_action = np.array(float_action) 
         dynamic_action[:77] = np.round(dynamic_action[:77]).astype(int)
 
-        # TODO: 
         # 4. In altering the action space, is it valid to somehow manipulate the actions where all actions are valid? YES - multiple methods, 1st 4, random 4, last 4, etc 
+        # TODO: Replace with valid RANGES
+        min_val = 0
+        max_val = 1
+
+        # Ensure the first four actions are valid
+        dynamic_action[0:4] = np.clip(dynamic_action[0:4], min_val, max_val)  
+
+        # Randomly manipulate four actions (example: random index from 0 to 76)
+        random_indices = np.random.choice(range(77), 4, replace=False)
+        dynamic_action[random_indices] = np.clip(dynamic_action[random_indices], min_val, max_val)  
+
+        # Ensure the last four actions are valid
+        dynamic_action[-4:] = np.clip(dynamic_action[-4:], min_val, max_val)  
 
         return dynamic_action
 

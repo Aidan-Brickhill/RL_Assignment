@@ -11,6 +11,7 @@ from grid2op import gym_compat
 from grid2op.Action import PlayableAction
 from grid2op.Observation import CompleteObservation
 from grid2op.Reward import L2RPNReward, N1Reward, CombinedScaledReward
+from grid2op.Parameters import Parameters
 
 from lightsim2grid import LightSimBackend
 
@@ -25,28 +26,40 @@ class Gym2OpEnv(gym.Env):
     def __init__(self, max_steps):
         super().__init__()
 
-        backend = LightSimBackend()
-        env_name = "l2rpn_case14_sandbox"
+        self._backend = LightSimBackend()
+        self._env_name = "l2rpn_case14_sandbox"
+
         action_class = PlayableAction
         observation_class = CompleteObservation
         reward_class = CombinedScaledReward  # Combines L2RPN and N1 rewards
 
+        # DO NOT CHANGE Parameters
+        # See https://grid2op.readthedocs.io/en/latest/parameters.html
+        p = Parameters()
+        p.MAX_SUB_CHANGED = 4  # Up to 4 substations can be reconfigured each timestep
+        p.MAX_LINE_STATUS_CHANGED = 4  # Up to 4 powerline statuses can be changed each timestep
+
+
         # Create Grid2Op environment with specified parameters
-        self.g2op_env = grid2op.make(
-            env_name, backend=backend, action_class=action_class, 
-            observation_class=observation_class, reward_class=reward_class
+        self._g2op_env = grid2op.make(
+            self._env_name, backend=self._backend, test=False,
+            action_class=action_class, observation_class=observation_class,
+            reward_class=reward_class, param=p
         )
 
         ##########
         # REWARD #
         ##########
-        cr = self.g2op_env.get_reward_instance()
+        # NOTE: This reward should not be modified when evaluating RL agent
+        # See https://grid2op.readthedocs.io/en/latest/reward.html
+        cr = self._g2op_env.get_reward_instance()
         cr.addReward("N1", N1Reward(), 1.0)
         cr.addReward("L2RPN", L2RPNReward(), 1.0)
-        cr.initialize(self.g2op_env)
+        # reward = N1 + L2RPN
+        cr.initialize(self._g2op_env)
         ##########
 
-        self._gym_env = gym_compat.GymEnv(self.g2op_env)
+        self._gym_env = gym_compat.GymEnv(self._g2op_env)
 
         self.max_steps = max_steps 
         self.curr_step = 0 
@@ -74,14 +87,20 @@ class Gym2OpEnv(gym.Env):
         # self.action_space =  gym.spaces.flatten_space(self._gym_env.action_space)
 
     def step(self, action):
+        action = [int(x) for x in action]
         original_action = self.unflatten_action(action)
         self.curr_step += 1 
-        obs, reward, terminated, truncated, _ = self._gym_env.step(original_action)
+        obs, reward, terminated, truncated, info = self._gym_env.step(original_action)
         
+        is_action_valid = not (info["is_illegal"] or info["is_ambiguous"])
+        print(f"\t is action valid = {is_action_valid}")
+        if not is_action_valid:
+            print(f"\t\t reason = {info['exception']}")
+            
         if self.curr_step >= self.max_steps:
             terminated = True
 
-        return obs, reward, terminated, truncated, _
+        return obs, reward, terminated, truncated, info
 
     def unflatten_action(self, action):
         original_action = {}
@@ -154,7 +173,7 @@ class EpisodeLengthLoggerCallback(BaseCallback):
 def create_env(max_steps):
     return Monitor(Gym2OpEnv(max_steps))
 
-def train(model_class, model_name, env, total_timesteps=25000):
+def train(model_class, model_name, env, total_timesteps=5000):
     print('Training ' + model_name)
 
     reward_logger = RewardLoggerCallback()
@@ -199,54 +218,64 @@ def evaluate(env, model, n_episodes=10, random_agent=False):
         rewards.append(episode_reward)
         episode_lengths.append(steps)
     
-    mean_reward = np.mean(rewards)
-    std_reward = np.std(rewards)
-     
+    mean_r_reward = np.mean(rewards)
+    std_r_reward = np.std(rewards)
+    mean_l_reward = np.mean(episode_lengths)
+    std_l_reward = np.std(episode_lengths)
+
     print('Completed evaluating agent')
 
-    return mean_reward, std_reward, episode_lengths
+    return mean_r_reward, std_r_reward, mean_l_reward, std_l_reward
 
 def plot_returns(random_return, ppo_return, a2c_return):
     agents = ['Random', 'PPO', 'A2C']
-    means = [random_return[0], ppo_return[0], a2c_return[0]]
-    stds = [random_return[1], ppo_return[1], a2c_return[1]]
+    r_means = [random_return[0], ppo_return[0], a2c_return[0]]
+    r_stds = [random_return[1], ppo_return[1], a2c_return[1]]
+    l_means = [random_return[2], ppo_return[2], a2c_return[2]]
+    l_stds = [random_return[3], ppo_return[3], a2c_return[3]]
 
     plt.figure(figsize=(10, 6))
-    plt.bar(agents, means, yerr=stds, capsize=10)
-    plt.title('Agent Performance Comparison')
+    plt.bar(agents, r_means, yerr=r_stds, capsize=10)
+    plt.title('Final Agent Return Comparison')
     plt.ylabel('Mean Return')
     plt.ylim(bottom=0)
-    for i, v in enumerate(means):
+    for i, v in enumerate(r_means):
         plt.text(i, v + 0.5, f'{v:.2f}', ha='center')
-    plt.savefig('plots/agent_comparison.png')
+    plt.savefig('baseline/plots/agent_r_comparison.png')
     plt.close()
 
     plt.figure(figsize=(10, 6))
-    plt.plot(ppo_return[2], label='PPO', marker='o', linestyle='-')
-    plt.plot(a2c_return[2], label='A2C', marker='s', linestyle='-')
+    plt.bar(agents, l_means, yerr=l_stds, capsize=10)
+    plt.title('Final Agent Length Comparison')
+    plt.ylabel('Mean Length')
+    plt.ylim(bottom=0)
+    for i, v in enumerate(r_means):
+        plt.text(i, v + 0.5, f'{v:.2f}', ha='center')
+    plt.savefig('baseline/plots/agent_l_comparison.png')
+    plt.close()
+
+    plt.figure(figsize=(10, 6))
+    plt.plot(ppo_return[4], label='PPO', marker='o', linestyle='-')
+    plt.plot(a2c_return[4], label='A2C', marker='s', linestyle='-')
     plt.xlabel('Episodes')
     plt.ylabel('Reward')
     plt.title('Reward Comparison of PPO, A2C, and Random Agent')
     plt.legend()
-    plt.savefig('plots/agent_reward.png')
+    plt.savefig('baseline/plots/agent_reward_over_time.png')
     plt.close()
 
-def plot_episode_lengths(random_length, ppo_length, a2c_length):
-
-    # Line plot for episode lengths over time
     plt.figure(figsize=(10, 6))
-    plt.plot(ppo_length, label='PPO', marker='o', linestyle='-')
-    plt.plot(a2c_length, label='A2C', marker='s', linestyle='-')
-    plt.plot(random_length, label='Random', marker='x', linestyle='-')
+    plt.plot(ppo_return[5], label='PPO', marker='o', linestyle='-')
+    plt.plot(a2c_return[5], label='A2C', marker='s', linestyle='-')
     plt.xlabel('Episodes')
     plt.ylabel('Episode Length')
     plt.title('Episode Length Over Time for PPO, A2C and Random Agents')
     plt.legend()
-    plt.savefig('plots/episode_length_over_time.png')
+    plt.savefig('baseline/plots/episode_length_over_time.png')
     plt.close()
 
 def main():
-    max_steps = 100
+    max_steps = 200
     env = create_env(max_steps)
     vec_env = make_vec_env(lambda: env, n_envs=1)
 
@@ -254,28 +283,27 @@ def main():
     a2c_reward = 0
     # Train PPO
     if not os.path.exists('baseline/ppo_grid2op.zip'):
-        ppo_model, ppo_reward, ppo_length = train(PPO, "ppo_grid2op", vec_env)
+        ppo_model, ppo_reward, ppo_length = train(PPO, "ppo_grid2op", env)
     else:
         ppo_model = PPO.load('baseline/ppo_grid2op.zip', env=env)
 
     # Train A2C
     if not os.path.exists('baseline/a2c_grid2op.zip'):
-        a2c_model, a2c_reward, a2c_length = train(A2C, "a2c_grid2op", vec_env)
+        a2c_model, a2c_reward, a2c_length = train(A2C, "a2c_grid2op", env)
     else:
         a2c_model = A2C.load('baseline/a2c_grid2op.zip', env=env)
     
     # Evaluate PPO
-    ppo_mean, ppo_std, ppo_episode_lengths = evaluate(env, ppo_model)
+    ppo_r_mean, ppo_r_std, ppo_l_mean, ppo_l_std = evaluate(env, ppo_model)
 
     # Evaluate A2C
-    a2c_mean, a2c_std, a2c_episode_lengths = evaluate(env, a2c_model)
+    a2c_r_mean, a2c_r_std, a2c_l_mean, a2c_l_std = evaluate(env, a2c_model)
 
     # Evaluate Random
-    random_mean, random_std, random_episode_lengths = evaluate(env, None, random_agent=True)
+    random_r_mean, random_r_std, random_l_mean, random_l_std = evaluate(env, None, random_agent=True)
 
     # Plot returns
-    plot_returns((random_mean, random_std), (ppo_mean, ppo_std, ppo_reward), (a2c_mean, a2c_std, a2c_reward))
-    plot_episode_lengths(random_episode_lengths, ppo_episode_lengths, a2c_episode_lengths)
+    plot_returns((random_r_mean, random_r_std, random_l_mean, random_l_std), (ppo_r_mean, ppo_r_std, ppo_l_mean, ppo_l_std, ppo_reward, ppo_length), (a2c_r_mean, a2c_r_std, a2c_l_mean, a2c_l_std, a2c_reward, a2c_length))
 
 if __name__ == "__main__":
     main()

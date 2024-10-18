@@ -365,38 +365,75 @@ def plot_returns(random_return, ppo_return, a2c_return, iteration):
     plt.close()
 
 def main():
-    iterations = ['Space1','Space2','Space3','Space4','Space5']
+    iterations = ['Space1', 'Space2', 'Space3', 'Space4', 'Space5']
     for iteration in iterations:
-
-        max_steps = 1000
-        env = create_env(max_steps,iteration)
-
-        ppo_reward = 0
-        a2c_reward = 0
-
-        # Train PPO
-        if not os.path.exists(f'iteration1/{iteration}/ppo_grid2op.zip'):
-            ppo_model, ppo_reward, ppo_length = train(PPO, "ppo_grid2op", env, iteration)
-        else:
-            ppo_model = PPO.load(f'iteration1/{iteration}/ppo_grid2op.zip', env=env)
-
-        # Train A2C
-        if not os.path.exists(f'iteration1/{iteration}/a2c_grid2op.zip'):
-            a2c_model, a2c_reward, a2c_length = train(A2C, "a2c_grid2op", env, iteration)
-        else:
-            a2c_model = A2C.load(f'iteration1/{iteration}/a2c_grid2op.zip', env=env)
         
-        # Evaluate PPO
-        ppo_r_mean, ppo_r_std, ppo_l_mean, ppo_l_std = evaluate(env, ppo_model)
+        ppo_r_mean_list, ppo_r_std_list = [], []
+        ppo_l_mean_list, ppo_l_std_list = [], []
+        a2c_r_mean_list, a2c_r_std_list = [], []
+        a2c_l_mean_list, a2c_l_std_list = [], []
+        random_r_mean_list, random_r_std_list = [], []
+        random_l_mean_list, random_l_std_list = [], []
 
-        # Evaluate A2C
-        a2c_r_mean, a2c_r_std, a2c_l_mean, a2c_l_std = evaluate(env, a2c_model)
+        for i in range(5):
+            env = create_env(iteration)
 
-        # Evaluate Random
-        random_r_mean, random_r_std, random_l_mean, random_l_std = evaluate(env, None, random_agent=True)
+            # Train PPO
+            if not os.path.exists(f'iteration1/{iteration}/ppo_grid2op.zip'):
+                ppo_model, ppo_reward, ppo_length = train(PPO, "ppo_grid2op", env, iteration)
+            else:
+                ppo_model = PPO.load(f'iteration1/{iteration}/ppo_grid2op.zip', env=env)
 
-        # Plot returns
-        plot_returns((random_r_mean, random_r_std, random_l_mean, random_l_std), (ppo_r_mean, ppo_r_std, ppo_l_mean, ppo_l_std, ppo_reward, ppo_length), (a2c_r_mean, a2c_r_std, a2c_l_mean, a2c_l_std, a2c_reward, a2c_length), iteration)
+            # Train A2C
+            if not os.path.exists(f'iteration1/{iteration}/a2c_grid2op.zip'):
+                a2c_model, a2c_reward, a2c_length = train(A2C, "a2c_grid2op", env, iteration)
+            else:
+                a2c_model = A2C.load(f'iteration1/{iteration}/a2c_grid2op.zip', env=env)
+
+            # Evaluate PPO
+            ppo_r_mean, ppo_r_std, ppo_l_mean, ppo_l_std = evaluate(env, ppo_model)
+            ppo_r_mean_list.append(ppo_r_mean)
+            ppo_r_std_list.append(ppo_r_std)
+            ppo_l_mean_list.append(ppo_l_mean)
+            ppo_l_std_list.append(ppo_l_std)
+
+            # Evaluate A2C
+            a2c_r_mean, a2c_r_std, a2c_l_mean, a2c_l_std = evaluate(env, a2c_model)
+            a2c_r_mean_list.append(a2c_r_mean)
+            a2c_r_std_list.append(a2c_r_std)
+            a2c_l_mean_list.append(a2c_l_mean)
+            a2c_l_std_list.append(a2c_l_std)
+
+            # Evaluate Random
+            random_r_mean, random_r_std, random_l_mean, random_l_std = evaluate(env, None, random_agent=True)
+            random_r_mean_list.append(random_r_mean)
+            random_r_std_list.append(random_r_std)
+            random_l_mean_list.append(random_l_mean)
+            random_l_std_list.append(random_l_std)
+
+        # Compute the average of the 5 agents
+        ppo_r_mean_avg = np.mean(ppo_r_mean_list)
+        ppo_r_std_avg = np.mean(ppo_r_std_list)
+        ppo_l_mean_avg = np.mean(ppo_l_mean_list)
+        ppo_l_std_avg = np.mean(ppo_l_std_list)
+
+        a2c_r_mean_avg = np.mean(a2c_r_mean_list)
+        a2c_r_std_avg = np.mean(a2c_r_std_list)
+        a2c_l_mean_avg = np.mean(a2c_l_mean_list)
+        a2c_l_std_avg = np.mean(a2c_l_std_list)
+
+        random_r_mean_avg = np.mean(random_r_mean_list)
+        random_r_std_avg = np.mean(random_r_std_list)
+        random_l_mean_avg = np.mean(random_l_mean_list)
+        random_l_std_avg = np.mean(random_l_std_list)
+
+        # Plot averaged returns
+        plot_returns(
+            (random_r_mean_avg, random_r_std_avg, random_l_mean_avg, random_l_std_avg), 
+            (ppo_r_mean_avg, ppo_r_std_avg, ppo_l_mean_avg, ppo_l_std_avg), 
+            (a2c_r_mean_avg, a2c_r_std_avg, a2c_l_mean_avg, a2c_l_std_avg), 
+            iteration
+        )
 
 if __name__ == "__main__":
     main()

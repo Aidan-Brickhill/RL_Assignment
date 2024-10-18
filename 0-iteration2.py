@@ -18,10 +18,21 @@ from grid2op.Action import PlayableAction
 from grid2op.Observation import CompleteObservation
 from grid2op.Reward import L2RPNReward, N1Reward, CombinedScaledReward
 
-# AlertReward, BaseReward
-from grid2op.Reward import Reward, BridgeReward, CloseToOverflowReward, EconomicReward, EpisodeDurationReward
-from grid2op.Reward import FlatReward, GameplayReward, DistanceReward, CombinedReward, ConstantReward, 
-from grid2op.Reward import AlarmReward, IncreasingFlatReward, LinesReconnectedReward, LinesCapacityReward, RedispReward
+# CombinedReward / CombinedScaledReward: These are versatile since they allow you to combine multiple rewards. You can start by experimenting with different reward combinations to capture multiple aspects of grid management (e.g., safety, economy, episode duration).
+
+# CloseToOverflowReward: Helps the agent avoid grid line overloads, which is critical for grid stability.
+
+# EconomicReward: If you want to optimize for cost efficiency in managing the power grid, this reward focuses on minimizing marginal costs.
+
+# EpisodeDurationReward: Encourages the agent to prolong the episode, making it a useful general metric for survival.
+
+# LinesCapacityReward: Useful to prevent lines from overloading and maximize unused line capacity. This ensures safe operation without running lines at maximum capacity.
+
+# N1Reward: Ensures the grid remains resilient even if a critical component (e.g., a powerline) fails, which is crucial for real-world reliability.
+
+# : A simple reward that can motivate the agent to complete as many timesteps as possible. Good for basic survival.
+
+from grid2op.Reward import L2RPNReward, N1Reward, CloseToOverflowReward, CombinedReward , CombinedScaledReward, EconomicReward, EpisodeDurationReward, LinesCapacityReward, IncreasingFlatReward
 
 from grid2op.Parameters import Parameters
 

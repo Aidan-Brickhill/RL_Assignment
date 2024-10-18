@@ -8,7 +8,6 @@ conda activate RL_Lab_DQN_env
 
 # Submit the job multiple times using sbatch
 sbatch job.batch
-# sbatch job_s.batch
 
 # Monitor the job queue
 watch -n 1 squeue -u abrickhill

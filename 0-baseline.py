@@ -31,7 +31,7 @@ from typing import Dict, Literal, Any
 
 # Gymnasium environment wrapper around Grid2Op environment
 class Gym2OpEnv(gym.Env):
-    def __init__(self, max_steps,
+    def __init__(self,
                  env_config: Dict[Literal["obs_attr_to_keep",
                                           "act_type",
                                           "act_attr_to_keep"],
@@ -74,9 +74,6 @@ class Gym2OpEnv(gym.Env):
 
         self._gym_env = GymEnv(self._g2op_env)
 
-        self.max_steps = max_steps 
-        self.curr_step = 0 
-
         self.setup_observations(env_config)
         self.setup_actions(env_config)
 
@@ -113,7 +110,6 @@ class Gym2OpEnv(gym.Env):
         return self._gym_env.step(action)
 
     def reset(self, seed=None, options=None): 
-        self.curr_step = 0 
         return self._gym_env.reset(seed=seed, options=options)
 
     def render(self, mode="human"):
@@ -166,7 +162,7 @@ class EpisodeLengthLoggerCallback(BaseCallback):
     def get_lengths(self):
         return self.episode_lengths
 
-def create_env(max_steps):
+def create_env():
 
     act_attr_to_keep = ['change_bus', 'change_line_status', 'curtail', 'redispatch', 'set_bus', 'set_line_status', 'set_line_status_simple', 'set_storage']
     
@@ -185,8 +181,9 @@ def create_env(max_steps):
         "act_attr_to_keep": act_attr_to_keep
     }
 
-    return Monitor(Gym2OpEnv(max_steps, env_config=env_config))
+    return Monitor(Gym2OpEnv(env_config=env_config))
 
+# 102400
 def train(model_class, model_name, env, total_timesteps=102400):
     print('Training ' + model_name)
 
@@ -248,40 +245,6 @@ def plot_returns(random_return, ppo_return, a2c_return):
     l_means = [random_return[2], ppo_return[2], a2c_return[2]]
     l_stds = [random_return[3], ppo_return[3], a2c_return[3]]
 
-    with open('baseline/data/agent_comparison.csv', mode='w', newline='') as file:
-        writer = csv.writer(file)
-        writer.writerow(['Agent', 'Mean Return', 'Return Std Dev', 'Mean Length', 'Length Std Dev'])
-        for i in range(len(agents)):
-            writer.writerow([agents[i], r_means[i], r_stds[i], l_means[i], l_stds[i]])
-
-    # Write PPO rewards
-    with open('baseline/data/episode_rewards_ppo.csv', mode='w', newline='') as file:
-        writer = csv.writer(file)
-        writer.writerow(['Episode', 'PPO Reward'])
-        for i in range(len(ppo_return[4])):
-            writer.writerow([i, ppo_return[4][i]])
-
-    # Write A2C rewards
-    with open('baseline/data/episode_rewards_a2c.csv', mode='w', newline='') as file:
-        writer = csv.writer(file)
-        writer.writerow(['Episode', 'A2C Reward'])
-        for i in range(len(a2c_return[4])):
-            writer.writerow([i, a2c_return[4][i]])
-
-        # Write PPO rewards
-    with open('baseline/data/episode_lengths_ppo.csv', mode='w', newline='') as file:
-        writer = csv.writer(file)
-        writer.writerow(['Episode', 'PPO Length'])
-        for i in range(len(ppo_return[5])):
-            writer.writerow([i, ppo_return[5][i]])
-
-    # Write A2C rewards
-    with open('baseline/data/episode_lengths_a2c.csv', mode='w', newline='') as file:
-        writer = csv.writer(file)
-        writer.writerow(['Episode', 'A2C Length'])
-        for i in range(len(a2c_return[5])):
-            writer.writerow([i, a2c_return[5][i]])
-
     plt.figure(figsize=(10, 6))
     plt.bar(agents, r_means, yerr=r_stds, capsize=10)
     plt.title('Final Agent Return Comparison')
@@ -289,7 +252,7 @@ def plot_returns(random_return, ppo_return, a2c_return):
     plt.ylim(bottom=0)
     for i, v in enumerate(r_means):
         plt.text(i, v + 0.5, f'{v:.2f}', ha='center')
-    plt.savefig('baseline/plots/agent_r_comparison.png')
+    plt.savefig(f'baseline/plots/agent_r_comparison.png')
     plt.close()
 
     plt.figure(figsize=(10, 6))
@@ -297,61 +260,182 @@ def plot_returns(random_return, ppo_return, a2c_return):
     plt.title('Final Agent Length Comparison')
     plt.ylabel('Mean Length')
     plt.ylim(bottom=0)
-    for i, v in enumerate(r_means):
+    for i, v in enumerate(l_means):
         plt.text(i, v + 0.5, f'{v:.2f}', ha='center')
-    plt.savefig('baseline/plots/agent_l_comparison.png')
+    plt.savefig(f'baseline/plots/agent_l_comparison.png')
     plt.close()
 
+    # Plot rewards for PPO and A2C
     plt.figure(figsize=(10, 6))
-    plt.plot(ppo_return[4], label='PPO', marker='o', linestyle='-')
-    plt.plot(a2c_return[4], label='A2C', marker='s', linestyle='-')
+    for i in range(len(ppo_return[4])):  # Assuming ppo_return[4] is a 2D array
+        plt.plot(ppo_return[4][i], label=f'PPO Run {i+1}', marker='o', linestyle='-')
     plt.xlabel('Episodes')
     plt.ylabel('Reward')
-    plt.title('Reward Comparison of PPO, A2C, and Random Agent')
+    plt.title('Reward of PPO')
     plt.legend()
-    plt.savefig('baseline/plots/agent_reward_over_time.png')
+    plt.savefig(f'baseline/plots/ppo_reward_over_time.png')
     plt.close()
 
+    # Plot rewards for PPO and A2C
     plt.figure(figsize=(10, 6))
-    plt.plot(ppo_return[5], label='PPO', marker='o', linestyle='-')
-    plt.plot(a2c_return[5], label='A2C', marker='s', linestyle='-')
+    for i in range(len(a2c_return[4])):  # Assuming a2c_return[4] is a 2D array
+        plt.plot(a2c_return[4][i], label=f'A2C Run {i+1}', marker='s', linestyle='-')
     plt.xlabel('Episodes')
-    plt.ylabel('Episode Length')
-    plt.title('Episode Length Over Time for PPO, A2C and Random Agents')
+    plt.ylabel('Reward')
+    plt.title('Reward of A2C')
     plt.legend()
-    plt.savefig('baseline/plots/episode_length_over_time.png')
+    plt.savefig(f'baseline/plots/a2c_reward_over_time.png')
+    plt.close()
+
+    # Plot rewards for PPO and A2C
+    plt.figure(figsize=(10, 6))
+    for i in range(len(ppo_return[5])):  # Assuming ppo_return[5] is a 2D array
+        plt.plot(ppo_return[5][i], label=f'PPO Run {i+1}', marker='o', linestyle='-')
+    plt.xlabel('Episodes')
+    plt.ylabel('Length')
+    plt.title('Length of PPO')
+    plt.legend()
+    plt.savefig(f'baseline/plots/ppo_length_over_time.png')
+    plt.close()
+
+    # Plot rewards for PPO and A2C
+    plt.figure(figsize=(10, 6))
+    for i in range(len(a2c_return[5])):  # Assuming a2c_return[5] is a 2D array
+        plt.plot(a2c_return[5][i], label=f'A2C Run {i+1}', marker='s', linestyle='-')
+    plt.xlabel('Episodes')
+    plt.ylabel('Length')
+    plt.title('Length of A2C')
+    plt.legend()
+    plt.savefig(f'baseline/plots/a2c_length_over_time.png')
     plt.close()
 
 def main():
-    max_steps = 1000
-    env = create_env(max_steps)
-    vec_env = make_vec_env(lambda: env, n_envs=1)
+    ppo_r_mean_list, ppo_r_std_list = [], []
+    ppo_l_mean_list, ppo_l_std_list = [], []
+    a2c_r_mean_list, a2c_r_std_list = [], []
+    a2c_l_mean_list, a2c_l_std_list = [], []
+    random_r_mean_list, random_r_std_list = [], []
+    random_l_mean_list, random_l_std_list = [], []
+    ppo_reward_mean_list, ppo_length_mean_list = [], []
+    a2c_reward_mean_list, a2c_length_mean_list = [], []
 
-    ppo_reward = 0
-    a2c_reward = 0
-    # Train PPO
-    if not os.path.exists('baseline/ppo_grid2op.zip'):
+    for i in range(5):
+        env = create_env()
+
         ppo_model, ppo_reward, ppo_length = train(PPO, "ppo_grid2op", env)
-    else:
-        ppo_model = PPO.load('baseline/ppo_grid2op.zip', env=env)
-
-    # Train A2C
-    if not os.path.exists('baseline/a2c_grid2op.zip'):
         a2c_model, a2c_reward, a2c_length = train(A2C, "a2c_grid2op", env)
-    else:
-        a2c_model = A2C.load('baseline/a2c_grid2op.zip', env=env)
-    
-    # Evaluate PPO
-    ppo_r_mean, ppo_r_std, ppo_l_mean, ppo_l_std = evaluate(env, ppo_model)
 
-    # Evaluate A2C
-    a2c_r_mean, a2c_r_std, a2c_l_mean, a2c_l_std = evaluate(env, a2c_model)
+        ppo_reward_mean_list.append(ppo_reward)
+        a2c_reward_mean_list.append(a2c_reward)
+        ppo_length_mean_list.append(ppo_length)
+        a2c_length_mean_list.append(a2c_length)
 
-    # Evaluate Random
-    random_r_mean, random_r_std, random_l_mean, random_l_std = evaluate(env, None, random_agent=True)
+        # Evaluate PPO
+        ppo_r_mean, ppo_r_std, ppo_l_mean, ppo_l_std = evaluate(env, ppo_model)
+        ppo_r_mean_list.append(ppo_r_mean)
+        ppo_r_std_list.append(ppo_r_std)
+        ppo_l_mean_list.append(ppo_l_mean)
+        ppo_l_std_list.append(ppo_l_std)
 
-    # Plot returns
-    plot_returns((random_r_mean, random_r_std, random_l_mean, random_l_std), (ppo_r_mean, ppo_r_std, ppo_l_mean, ppo_l_std, ppo_reward, ppo_length), (a2c_r_mean, a2c_r_std, a2c_l_mean, a2c_l_std, a2c_reward, a2c_length))
+        # Evaluate A2C
+        a2c_r_mean, a2c_r_std, a2c_l_mean, a2c_l_std = evaluate(env, a2c_model)
+        a2c_r_mean_list.append(a2c_r_mean)
+        a2c_r_std_list.append(a2c_r_std)
+        a2c_l_mean_list.append(a2c_l_mean)
+        a2c_l_std_list.append(a2c_l_std)
+
+        # Evaluate Random
+        random_r_mean, random_r_std, random_l_mean, random_l_std = evaluate(env, None, random_agent=True)
+        random_r_mean_list.append(random_r_mean)
+        random_r_std_list.append(random_r_std)
+        random_l_mean_list.append(random_l_mean)
+        random_l_std_list.append(random_l_std)
+
+    # Compute the average of the 5 agents
+    ppo_r_mean_avg = np.mean(ppo_r_mean_list)
+    ppo_r_std_avg = np.mean(ppo_r_std_list)
+    ppo_l_mean_avg = np.mean(ppo_l_mean_list)
+    ppo_l_std_avg = np.mean(ppo_l_std_list)
+
+    a2c_r_mean_avg = np.mean(a2c_r_mean_list)
+    a2c_r_std_avg = np.mean(a2c_r_std_list)
+    a2c_l_mean_avg = np.mean(a2c_l_mean_list)
+    a2c_l_std_avg = np.mean(a2c_l_std_list)
+
+    random_r_mean_avg = np.mean(random_r_mean_list)
+    random_r_std_avg = np.mean(random_r_std_list)
+    random_l_mean_avg = np.mean(random_l_mean_list)
+    random_l_std_avg = np.mean(random_l_std_list)
+
+    with open(f'baseline_results.csv', mode='w', newline='') as file:
+        writer = csv.writer(file)
+        
+        # Write headers
+        writer.writerow(['Random R Mean Avg', 'Random R Std Avg', 'Random L Mean Avg', 'Random L Std Avg',
+                        'PPO R Mean Avg', 'PPO R Std Avg', 'PPO L Mean Avg', 'PPO L Std Avg',
+                        'PPO Reward Mean List', 'PPO Length Mean List',
+                        'A2C R Mean Avg', 'A2C R Std Avg', 'A2C L Mean Avg', 'A2C L Std Avg',
+                        'A2C Reward Mean List', 'A2C Length Mean List'])
+        
+        writer.writerow([random_r_mean_avg, random_r_std_avg, random_l_mean_avg, random_l_std_avg,
+                        ppo_r_mean_avg, ppo_r_std_avg, ppo_l_mean_avg, ppo_l_std_avg,
+                        ppo_reward_mean_list, ppo_length_mean_list,
+                        a2c_r_mean_avg, a2c_r_std_avg, a2c_l_mean_avg, a2c_l_std_avg,
+                        a2c_reward_mean_list, a2c_length_mean_list])
+
+    # Plot averaged returns
+    plot_returns(
+        (random_r_mean_avg, random_r_std_avg, random_l_mean_avg, random_l_std_avg), 
+        (ppo_r_mean_avg, ppo_r_std_avg, ppo_l_mean_avg, ppo_l_std_avg, ppo_reward_mean_list, ppo_length_mean_list), 
+        (a2c_r_mean_avg, a2c_r_std_avg, a2c_l_mean_avg, a2c_l_std_avg, a2c_reward_mean_list, a2c_length_mean_list)
+    )
 
 if __name__ == "__main__":
     main()
+    # random_r_mean_avg, random_r_std_avg, random_l_mean_avg, random_l_std_avg = 1, 1, 1, 1
+    # ppo_r_mean_avg, ppo_r_std_avg, ppo_l_mean_avg, ppo_l_std_avg = 1, 1, 1, 1
+    # ppo_reward_mean_list =[[1,2,3],
+    #                     [1,2,3, 7, 9],
+    #                     [1,2,3],
+    #                     [1,2,3],
+    #                     [1,2,3]]
+    # ppo_length_mean_list =[[1,2,3],
+    #                     [1,2,3],
+    #                     [1,2,3],
+    #                     [1,2,3],
+    #                     [1,2,3]]
+    # a2c_r_mean_avg, a2c_r_std_avg, a2c_l_mean_avg, a2c_l_std_avg = 1, 1, 1, 1
+    # a2c_reward_mean_list =[[1,2,3],
+    #                     [1,2,3],
+    #                     [1,56,3],
+    #                     [1,2,3],
+    #                     [1,2,3]]
+    # a2c_length_mean_list =[[1,2,3],
+    #                     [1,2,3],
+    #                     [1,2,3],
+    #                     [1,2,1],
+    #                     [1,2,3]]
+
+
+    # with open(f'baseline_results.csv', mode='w', newline='') as file:
+    #     writer = csv.writer(file)
+        
+    #     # Write headers
+    #     writer.writerow(['Random R Mean Avg', 'Random R Std Avg', 'Random L Mean Avg', 'Random L Std Avg',
+    #                     'PPO R Mean Avg', 'PPO R Std Avg', 'PPO L Mean Avg', 'PPO L Std Avg',
+    #                     'PPO Reward Mean List', 'PPO Length Mean List',
+    #                     'A2C R Mean Avg', 'A2C R Std Avg', 'A2C L Mean Avg', 'A2C L Std Avg',
+    #                     'A2C Reward Mean List', 'A2C Length Mean List'])
+        
+    #     writer.writerow([random_r_mean_avg, random_r_std_avg, random_l_mean_avg, random_l_std_avg,
+    #                     ppo_r_mean_avg, ppo_r_std_avg, ppo_l_mean_avg, ppo_l_std_avg,
+    #                     ppo_reward_mean_list, ppo_length_mean_list,
+    #                     a2c_r_mean_avg, a2c_r_std_avg, a2c_l_mean_avg, a2c_l_std_avg,
+    #                     a2c_reward_mean_list, a2c_length_mean_list])
+
+    # # Plot averaged returns
+    # plot_returns(
+    #     (random_r_mean_avg, random_r_std_avg, random_l_mean_avg, random_l_std_avg), 
+    #     (ppo_r_mean_avg, ppo_r_std_avg, ppo_l_mean_avg, ppo_l_std_avg, ppo_reward_mean_list, ppo_length_mean_list), 
+    #     (a2c_r_mean_avg, a2c_r_std_avg, a2c_l_mean_avg, a2c_l_std_avg, a2c_reward_mean_list, a2c_length_mean_list)
+    # )

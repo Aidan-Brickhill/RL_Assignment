@@ -169,7 +169,13 @@ class EpisodeLengthLoggerCallback(BaseCallback):
         return self.episode_lengths
 
 def create_env(agent, reward, evaluate = False):
+    """
+    Creates a grid2op environment with the action and observation space based on the agent provided. It also stakes ina specific reward and an 
+    evaluation flag, weather or not the agent is being trained or evaluated.
 
+    Returns the environemtn wrapped in a monitor.
+    """
+        
     if agent == 'PPO':
         act_attr_to_keep = ['change_bus', 'change_line_status', 'curtail', 'redispatch']
 
@@ -197,6 +203,12 @@ def create_env(agent, reward, evaluate = False):
     return Monitor(Gym2OpEnv(env_config=env_config, reward=reward,evaluate=evaluate))
 
 def train(model_class, model_name, env, reward, total_timesteps=102400):
+    """
+    Trains an agent based on the model and saves the agent
+
+    Returns the agent. It also returns rewards and epsidoe length over time.
+    """
+        
     print('Training ' + model_name)
 
     reward_logger = RewardLoggerCallback()
@@ -217,7 +229,12 @@ def train(model_class, model_name, env, reward, total_timesteps=102400):
     return model, rewards, episode_lengths
 
 def evaluate(env, model, n_episodes=10, random_agent=False):
-    
+    """
+    Evaluates and agent on ten episode in the environemtn with the base reward provided.
+
+    Returns the mean and standard deviation of episode reward and length.
+    """
+
     print('Evaluating agent')
 
     rewards = []
@@ -251,10 +268,13 @@ def evaluate(env, model, n_episodes=10, random_agent=False):
     return mean_r_reward, std_r_reward, mean_l_reward, std_l_reward
 
 def plot_returns(random_return, returns, reward, agent):
+    """
+    Plots the reward and episode length over time.
+    """
 
     # Plot rewards for PPO and A2C
     plt.figure(figsize=(10, 6))
-    for i in range(len(returns[4])):  # Assuming ppo_return[4] is a 2D array
+    for i in range(len(returns[4])): 
         plt.plot(returns[4][i], label=f'PPO Run {i+1}', marker='o', linestyle='-')
     plt.xlabel('Episodes')
     plt.ylabel('Reward')
@@ -265,7 +285,7 @@ def plot_returns(random_return, returns, reward, agent):
 
     # Plot rewards for PPO and A2C
     plt.figure(figsize=(10, 6))
-    for i in range(len(returns[5])):  # Assuming ppo_return[5] is a 2D array
+    for i in range(len(returns[5])): 
         plt.plot(returns[5][i], label=f'PPO Run {i+1}', marker='o', linestyle='-')
     plt.xlabel('Episodes')
     plt.ylabel('Length')
@@ -275,6 +295,11 @@ def plot_returns(random_return, returns, reward, agent):
     plt.close()
 
 def main():
+    """
+    Runs the process of training and evaluating multiple agents per algorithm on each reward in order to analyse the results of PPO and A2C on
+    different action and observation spaces.
+    """
+        
     agents = [PPO, A2C]
     agents_string = ['PPO', 'A2C']
     rewards = [L2RPNReward, N1Reward, CloseToOverflowReward, CombinedReward, EconomicReward, EpisodeDurationReward, LinesCapacityReward, IncreasingFlatReward]

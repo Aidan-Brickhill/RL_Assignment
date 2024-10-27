@@ -1,9 +1,24 @@
-the run.sh file submits the job to the cluster
-the job.batch file runs the code on the cluster
+Overview
+This project includes multiple scripts and configurations to train and evaluate reinforcement learning agents across different baselines and iterations on a cluster. Each iteration introduces variations in training spaces and rewards.
 
-baseline and iteration 1 are stand alone and dont need the merge csv file to get results
-merge csv results, merges the csvs from iteration 2
+Files
+run.sh: Submits the job to the cluster for execution.
+job.batch: Defines the batch job that will run the code on the cluster.
+Iterations and Baselines
+Baseline:
 
-baseline contains the code for the baseline agents. it trains 5 agents per algorithm and plots the results
-iteration1 contains the code for the iteration1 agents. it trains 5 agents per algorithm per space and plots the results, each sapce is predefined within the code
-iteration2 contains the code for the iterationw agents. it trains 5 agents per algorithm per reward, merge_csv plots the results, each reward is predefined within the code
+Contains the code for baseline agents.
+Trains 5 agents per algorithm and generates plots of their performance.
+Baseline results do not require merged CSV files for analysis.
+Iteration 1:
+
+Contains code for agents in the first iteration, training 5 agents per algorithm across multiple predefined spaces.
+Each space is defined within the code, and results are plotted directly.
+Like the baseline, this iteration does not require the merged CSV file for result analysis.
+Iteration 2:
+
+Contains code for agents in the second iteration, training 5 agents per algorithm across different predefined rewards.
+Results from multiple CSV files are merged using the merge_csv script, which consolidates results and generates plots for analysis.
+Result Merging
+merge_csv:
+Used in Iteration 2 to merge individual CSV files from each agent, consolidating the data for comprehensive result plots.

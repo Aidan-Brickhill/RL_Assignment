@@ -163,6 +163,11 @@ class EpisodeLengthLoggerCallback(BaseCallback):
         return self.episode_lengths
 
 def create_env(iteration):
+    """
+    Creates a grid2op environment with the action and observation space based on the iteration provided.
+
+    Returns the environemtn wrapped in a monitor.
+    """
 
     if iteration == 'Space1':
         act_attr_to_keep = ['change_bus', 'change_line_status', 'curtail', 'redispatch', 'set_bus', 'set_line_status', 'set_line_status_simple', 'set_storage']
@@ -224,8 +229,14 @@ def create_env(iteration):
     }
 
     return Monitor(Gym2OpEnv(env_config=env_config))
-# 102400
+
 def train(model_class, model_name, env, iteration, total_timesteps=102400):
+    """
+    Trains an agent based on the model and saves the agent
+
+    Returns the agent. It also returns rewards and epsidoe length over time.
+    """
+        
     print('Training ' + model_name)
 
     reward_logger = RewardLoggerCallback()
@@ -239,14 +250,18 @@ def train(model_class, model_name, env, iteration, total_timesteps=102400):
 
     print('Completed Training ' + model_name)
     
-    # Plotting rewards and Episode lengths after training
     rewards = reward_logger.get_rewards()
     episode_lengths = length_logger.get_lengths()
 
     return model, rewards, episode_lengths
 
 def evaluate(env, model, n_episodes=10, random_agent=False):
-    
+    """
+    Evaluates and agent on ten episode in the environemtn with the base reward provided.
+
+    Returns the mean and standard deviation of episode reward and length.
+    """
+
     print('Evaluating agent')
 
     rewards = []
@@ -280,6 +295,10 @@ def evaluate(env, model, n_episodes=10, random_agent=False):
     return mean_r_reward, std_r_reward, mean_l_reward, std_l_reward
 
 def plot_returns(random_return, ppo_return, a2c_return, iteration):
+    """
+    Plots the mean reward and lenght with standard deviation and the reward and episode length over time.
+    """
+        
     agents = ['Random', 'PPO', 'A2C']
     r_means = [random_return[0], ppo_return[0], a2c_return[0]]
     r_stds = [random_return[1], ppo_return[1], a2c_return[1]]
@@ -308,7 +327,7 @@ def plot_returns(random_return, ppo_return, a2c_return, iteration):
 
     # Plot rewards for PPO and A2C
     plt.figure(figsize=(10, 6))
-    for i in range(len(ppo_return[4])):  # Assuming ppo_return[4] is a 2D array
+    for i in range(len(ppo_return[4])): 
         plt.plot(ppo_return[4][i], label=f'PPO Run {i+1}', marker='o', linestyle='-')
     plt.xlabel('Episodes')
     plt.ylabel('Reward')
@@ -319,7 +338,7 @@ def plot_returns(random_return, ppo_return, a2c_return, iteration):
 
     # Plot rewards for PPO and A2C
     plt.figure(figsize=(10, 6))
-    for i in range(len(a2c_return[4])):  # Assuming a2c_return[4] is a 2D array
+    for i in range(len(a2c_return[4])): 
         plt.plot(a2c_return[4][i], label=f'A2C Run {i+1}', marker='s', linestyle='-')
     plt.xlabel('Episodes')
     plt.ylabel('Reward')
@@ -330,7 +349,7 @@ def plot_returns(random_return, ppo_return, a2c_return, iteration):
 
     # Plot rewards for PPO and A2C
     plt.figure(figsize=(10, 6))
-    for i in range(len(ppo_return[5])):  # Assuming ppo_return[5] is a 2D array
+    for i in range(len(ppo_return[5])):  
         plt.plot(ppo_return[5][i], label=f'PPO Run {i+1}', marker='o', linestyle='-')
     plt.xlabel('Episodes')
     plt.ylabel('Length')
@@ -341,7 +360,7 @@ def plot_returns(random_return, ppo_return, a2c_return, iteration):
 
     # Plot rewards for PPO and A2C
     plt.figure(figsize=(10, 6))
-    for i in range(len(a2c_return[5])):  # Assuming a2c_return[5] is a 2D array
+    for i in range(len(a2c_return[5])):  
         plt.plot(a2c_return[5][i], label=f'A2C Run {i+1}', marker='s', linestyle='-')
     plt.xlabel('Episodes')
     plt.ylabel('Length')
@@ -351,8 +370,11 @@ def plot_returns(random_return, ppo_return, a2c_return, iteration):
     plt.close()
 
 def main():
+    """
+    Runs the process of training and evaluating multiple agents per algorithm on eahc space in order to analyse the results of PPO and A2C on
+    different action and observation spaces.
+    """
     iterations = ['Space1', 'Space2', 'Space3', 'Space4', 'Space5']
-    iterations = ['Space1']
     for iteration in iterations:
         
         ppo_r_mean_list, ppo_r_std_list = [], []
@@ -364,7 +386,7 @@ def main():
         ppo_reward_mean_list, ppo_length_mean_list = [], []
         a2c_reward_mean_list, a2c_length_mean_list = [], []
 
-        for i in range(1):
+        for i in range(5):
             env = create_env(iteration)
 
             ppo_model, ppo_reward, ppo_length = train(PPO, "ppo_grid2op", env, iteration)

@@ -5,11 +5,11 @@ import matplotlib.pyplot as plt
 
 agents_string = ['PPO', 'A2C']
 rewards_string = [
-    'L2RPNReward', 'N1Reward', 'CloseToOverflowReward', 'CombinedReward', 
-    'EconomicReward', 'EpisodeDurationReward', 'LinesCapacityReward', 'IncreasingFlatReward'
+    'L2RPNReward', 'N1Reward', 'CloseToOverflowReward', 
+    'EconomicReward', 'LinesCapacityReward', 'IncreasingFlatReward'
 ]
 
-folders = ["iteration20", "iteration21", "iteration22", "iteration23", "iteration24"]
+folders = ["iteration20", "iteration21" "iteration22", "iteration23", "iteration24"]
 
 # combines seperate csv files into 1
 for agent in agents_string:
@@ -55,8 +55,8 @@ for agent in agents_string:
         if data_frames:
             avg_df = pd.concat(data_frames).groupby(level=0).mean()
             data[agent][reward]['r_mean'] = avg_df['R Mean Avg'].mean()
-            data[agent][reward]['r_std'] = avg_df['R Std Avg'].mean()
             data[agent][reward]['l_mean'] = avg_df['L Mean Avg'].mean()
+            data[agent][reward]['r_std'] = avg_df['R Std Avg'].mean() 
             data[agent][reward]['l_std'] = avg_df['L Std Avg'].mean()
 
 for agent in agents_string:

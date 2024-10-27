@@ -1,8 +1,8 @@
+
 import copy
 import csv
 from typing import Dict, Literal, Any
 import json
-
 import gymnasium as gym
 from gymnasium.spaces import Discrete, MultiDiscrete, Box
 
@@ -17,24 +17,9 @@ from grid2op.gym_compat import GymEnv, BoxGymObsSpace, DiscreteActSpace, BoxGymA
 from grid2op.Action import PlayableAction
 from grid2op.Observation import CompleteObservation
 from grid2op.Reward import L2RPNReward, N1Reward, CombinedScaledReward
-
-# CombinedReward / CombinedScaledReward: These are versatile since they allow you to combine multiple rewards. You can start by experimenting with different reward combinations to capture multiple aspects of grid management (e.g., safety, economy, episode duration).
-
-# CloseToOverflowReward: Helps the agent avoid grid line overloads, which is critical for grid stability.
-
-# EconomicReward: If you want to optimize for cost efficiency in managing the power grid, this reward focuses on minimizing marginal costs.
-
-# EpisodeDurationReward: Encourages the agent to prolong the episode, making it a useful general metric for survival.
-
-# LinesCapacityReward: Useful to prevent lines from overloading and maximize unused line capacity. This ensures safe operation without running lines at maximum capacity.
-
-# N1Reward: Ensures the grid remains resilient even if a critical component (e.g., a powerline) fails, which is crucial for real-world reliability.
-
-# : A simple reward that can motivate the agent to complete as many timesteps as possible. Good for basic survival.
+from grid2op.Parameters import Parameters
 
 from grid2op.Reward import L2RPNReward, N1Reward, CloseToOverflowReward, CombinedReward , CombinedScaledReward, EconomicReward, EpisodeDurationReward, LinesCapacityReward, IncreasingFlatReward
-
-from grid2op.Parameters import Parameters
 
 from lightsim2grid import LightSimBackend
 
@@ -48,7 +33,7 @@ from typing import Dict, Literal, Any
 
 # Gymnasium environment wrapper around Grid2Op environment
 class Gym2OpEnv(gym.Env):
-    def __init__(self,
+    def __init__(self, reward, evaluate = False,
                  env_config: Dict[Literal["obs_attr_to_keep",
                                           "act_type",
                                           "act_attr_to_keep"],
@@ -62,7 +47,10 @@ class Gym2OpEnv(gym.Env):
 
         action_class = PlayableAction
         observation_class = CompleteObservation
-        reward_class = CombinedScaledReward  # Combines L2RPN and N1 rewards
+        if (evaluate):
+            reward_class = CombinedScaledReward  # Combines L2RPN and N1 rewards
+        else:
+            reward_class = reward
 
         # DO NOT CHANGE Parameters
         # See https://grid2op.readthedocs.io/en/latest/parameters.html
@@ -77,22 +65,20 @@ class Gym2OpEnv(gym.Env):
             reward_class=reward_class, param=p
         )
 
-        ##########
-        # REWARD #
-        ##########
-        # NOTE: This reward should not be modified when evaluating RL agent
-        # See https://grid2op.readthedocs.io/en/latest/reward.html
-        cr = self._g2op_env.get_reward_instance()
-        cr.addReward("N1", N1Reward(), 1.0)
-        cr.addReward("L2RPN", L2RPNReward(), 1.0)
-        # reward = N1 + L2RPN
-        cr.initialize(self._g2op_env)
-        ##########
+        if (evaluate):
+            # ##########
+            # # REWARD #
+            # ##########
+            # # NOTE: This reward should not be modified when evaluating RL agent
+            # # See https://grid2op.readthedocs.io/en/latest/reward.html
+            cr = self._g2op_env.get_reward_instance()
+            cr.addReward("N1", N1Reward(), 1.0)
+            cr.addReward("L2RPN", L2RPNReward(), 1.0)
+            # reward = N1 + L2RPN
+            cr.initialize(self._g2op_env)
+            # ##########
 
         self._gym_env = GymEnv(self._g2op_env)
-
-        self.max_steps = max_steps 
-        self.curr_step = 0 
 
         self.setup_observations(env_config)
         self.setup_actions(env_config)
@@ -130,7 +116,6 @@ class Gym2OpEnv(gym.Env):
         return self._gym_env.step(action)
 
     def reset(self, seed=None, options=None): 
-        self.curr_step = 0 
         return self._gym_env.reset(seed=seed, options=options)
 
     def render(self, mode="human"):
@@ -183,9 +168,18 @@ class EpisodeLengthLoggerCallback(BaseCallback):
     def get_lengths(self):
         return self.episode_lengths
 
-def create_env(max_steps, iteration):
+def create_env(agent, reward, evaluate = False):
 
-    if iteration == 'Space1':
+    if agent == 'PPO':
+        act_attr_to_keep = ['change_bus', 'change_line_status', 'curtail', 'redispatch']
+
+        obs_attr_to_keep = ['a_ex', 'a_or', 'actual_dispatch', 'attention_budget', 'current_step', 'curtailment', 'curtailment_limit_effective', 
+                            'delta_time', 'gen_margin_down', 'gen_margin_up', 'gen_p', 'gen_q', 'gen_theta', 'gen_v', 'load_p', 'load_q', 'load_theta', 
+                            'load_v', 'max_step', 'p_ex', 'p_or', 'q_ex', 'q_or', 'rho', 'target_dispatch', 'thermal_limit', 'theta_ex', 'theta_or', 
+                            'topo_vect', 'v_ex', 'v_or'
+                        ]
+
+    if agent == 'A2C':
         act_attr_to_keep = ['change_bus', 'change_line_status', 'curtail', 'redispatch', 'set_bus', 'set_line_status', 'set_line_status_simple', 'set_storage']
 
         obs_attr_to_keep = ['a_ex', 'a_or', 'actual_dispatch', 'attention_budget', 'current_step', 'curtailment', 'curtailment_limit_effective', 
@@ -193,60 +187,16 @@ def create_env(max_steps, iteration):
                             'load_v', 'max_step', 'p_ex', 'p_or', 'q_ex', 'q_or', 'rho', 'target_dispatch', 'thermal_limit', 'theta_ex', 'theta_or', 
                             'topo_vect', 'v_ex', 'v_or'
                         ]
-
-    if iteration == 'Space2':
-        act_attr_to_keep = ['change_bus', 'change_line_status', 'curtail', 'redispatch']
-
-        obs_attr_to_keep = ['a_ex' ,'a_or' ,'active_alert' ,'actual_dispatch' ,'alert_duration' ,'attack_under_alert' ,'attention_budget' ,'was_alert_used_after_attack'
-	                   ,'current_step' ,'curtailment' ,'curtailment_limit' ,'curtailment_limit_effective' ,'curtailment_limit_mw' ,'curtailment_mw'
-	                   ,'day' ,'day_of_week' ,'delta_time' ,'duration_next_maintenance' ,'gen_margin_down' ,'gen_margin_up' ,'gen_p' ,'gen_p_before_curtail'
-	                   ,'gen_q' ,'gen_theta' ,'gen_v' ,'hour_of_day' ,'is_alarm_illegal' ,'last_alarm' ,'line_status' ,'load_p', 'load_q' ,'load_theta'
-	                   ,'load_v' ,'max_step' ,'minute_of_hour' ,'month' ,'p_ex' ,'p_or' ,'prod_p' ,'prod_q' ,'prod_v','q_ex' ,'q_or' ,'rho' ,'storage_charge'
-	                   ,'storage_power' ,'storage_power_target' ,'storage_theta' ,'target_dispatch' ,'thermal_limit' ,'theta_ex' ,'theta_or' ,'year'
-	                   ,'time_before_cooldown_line' ,'time_before_cooldown_sub' ,'time_next_maintenance' ,'time_since_last_alarm' ,'time_since_last_alert'
-	                   ,'time_since_last_attack' ,'timestep_overflow' ,'topo_vect' ,'total_number_of_alert' ,'v_ex' ,'v_or' ,'was_alarm_used_after_game_over'
-                    ]
         
-    if iteration == 'Space3':
-        act_attr_to_keep = ['curtail', 'redispatch', 'set_bus', 'set_line_status']
-
-        obs_attr_to_keep = ['a_ex' ,'a_or' ,'active_alert' ,'actual_dispatch' ,'alert_duration' ,'attack_under_alert' ,'attention_budget' ,'was_alert_used_after_attack'
-	                   ,'current_step' ,'curtailment' ,'curtailment_limit' ,'curtailment_limit_effective' ,'curtailment_limit_mw' ,'curtailment_mw'
-	                   ,'day' ,'day_of_week' ,'delta_time' ,'duration_next_maintenance' ,'gen_margin_down' ,'gen_margin_up' ,'gen_p' ,'gen_p_before_curtail'
-	                   ,'gen_q' ,'gen_theta' ,'gen_v' ,'hour_of_day' ,'is_alarm_illegal' ,'last_alarm' ,'line_status' ,'load_p', 'load_q' ,'load_theta'
-	                   ,'load_v' ,'max_step' ,'minute_of_hour' ,'month' ,'p_ex' ,'p_or' ,'prod_p' ,'prod_q' ,'prod_v','q_ex' ,'q_or' ,'rho' ,'storage_charge'
-	                   ,'storage_power' ,'storage_power_target' ,'storage_theta' ,'target_dispatch' ,'thermal_limit' ,'theta_ex' ,'theta_or' ,'year'
-	                   ,'time_before_cooldown_line' ,'time_before_cooldown_sub' ,'time_next_maintenance' ,'time_since_last_alarm' ,'time_since_last_alert'
-	                   ,'time_since_last_attack' ,'timestep_overflow' ,'topo_vect' ,'total_number_of_alert' ,'v_ex' ,'v_or' ,'was_alarm_used_after_game_over'
-                    ]
-
-    if iteration == 'Space4':
-        act_attr_to_keep = ['change_bus', 'change_line_status', 'curtail', 'redispatch']
-
-        obs_attr_to_keep = ['a_ex', 'a_or', 'actual_dispatch', 'attention_budget', 'current_step', 'curtailment', 'curtailment_limit_effective', 
-                            'delta_time', 'gen_margin_down', 'gen_margin_up', 'gen_p', 'gen_q', 'gen_theta', 'gen_v', 'load_p', 'load_q', 'load_theta', 
-                            'load_v', 'max_step', 'p_ex', 'p_or', 'q_ex', 'q_or', 'rho', 'target_dispatch', 'thermal_limit', 'theta_ex', 'theta_or', 
-                            'topo_vect', 'v_ex', 'v_or'
-                        ]
-    
-    if iteration == 'Space5':
-        act_attr_to_keep = ['curtail', 'redispatch', 'set_bus', 'set_line_status']
-
-        obs_attr_to_keep = ['a_ex', 'a_or', 'actual_dispatch', 'attention_budget', 'current_step', 'curtailment', 'curtailment_limit_effective', 
-                            'delta_time', 'gen_margin_down', 'gen_margin_up', 'gen_p', 'gen_q', 'gen_theta', 'gen_v', 'load_p', 'load_q', 'load_theta', 
-                            'load_v', 'max_step', 'p_ex', 'p_or', 'q_ex', 'q_or', 'rho', 'target_dispatch', 'thermal_limit', 'theta_ex', 'theta_or', 
-                            'topo_vect', 'v_ex', 'v_or'
-                        ]
-
     env_config = {
         "obs_attr_to_keep": obs_attr_to_keep,
         "act_type": "discrete",
         "act_attr_to_keep": act_attr_to_keep
     }
 
-    return Monitor(Gym2OpEnv(max_steps, env_config=env_config))
+    return Monitor(Gym2OpEnv(env_config=env_config, reward=reward,evaluate=evaluate))
 
-def train(model_class, model_name, env, iteration, total_timesteps=102400):
+def train(model_class, model_name, env, reward, total_timesteps=102400):
     print('Training ' + model_name)
 
     reward_logger = RewardLoggerCallback()
@@ -256,7 +206,7 @@ def train(model_class, model_name, env, iteration, total_timesteps=102400):
 
     model = model_class("MlpPolicy", env, verbose=1)
     model.learn(total_timesteps=total_timesteps, callback=callback_list)
-    model.save(f'iteration1/{iteration}/{model_name}')
+    model.save(f'iteration20/{reward}/{model_name}')
 
     print('Completed Training ' + model_name)
     
@@ -300,120 +250,99 @@ def evaluate(env, model, n_episodes=10, random_agent=False):
 
     return mean_r_reward, std_r_reward, mean_l_reward, std_l_reward
 
-def plot_returns(random_return, ppo_return, a2c_return, iteration):
-    agents = ['Random', 'PPO', 'A2C']
-    r_means = [random_return[0], ppo_return[0], a2c_return[0]]
-    r_stds = [random_return[1], ppo_return[1], a2c_return[1]]
-    l_means = [random_return[2], ppo_return[2], a2c_return[2]]
-    l_stds = [random_return[3], ppo_return[3], a2c_return[3]]
+def plot_returns(random_return, returns, reward, agent):
 
-    with open(f'iteration1/data/{iteration}/agent_comparison.csv', mode='w', newline='') as file:
-        writer = csv.writer(file)
-        writer.writerow(['Agent', 'Mean Return', 'Return Std Dev', 'Mean Length', 'Length Std Dev'])
-        for i in range(len(agents)):
-            writer.writerow([agents[i], r_means[i], r_stds[i], l_means[i], l_stds[i]])
-
-    # Write PPO rewards
-    with open(f'iteration1/data/{iteration}/episode_rewards_ppo.csv', mode='w', newline='') as file:
-        writer = csv.writer(file)
-        writer.writerow(['Episode', 'PPO Reward'])
-        for i in range(len(ppo_return[4])):
-            writer.writerow([i, ppo_return[4][i]])
-
-    # Write A2C rewards
-    with open(f'iteration1/data/{iteration}/episode_rewards_a2c.csv', mode='w', newline='') as file:
-        writer = csv.writer(file)
-        writer.writerow(['Episode', 'A2C Reward'])
-        for i in range(len(a2c_return[4])):
-            writer.writerow([i, a2c_return[4][i]])
-
-        # Write PPO rewards
-    with open(f'iteration1/data/{iteration}/episode_lengths_ppo.csv', mode='w', newline='') as file:
-        writer = csv.writer(file)
-        writer.writerow(['Episode', 'PPO Length'])
-        for i in range(len(ppo_return[5])):
-            writer.writerow([i, ppo_return[5][i]])
-
-    # Write A2C rewards
-    with open(f'iteration1/data/{iteration}/episode_lengths_a2c.csv', mode='w', newline='') as file:
-        writer = csv.writer(file)
-        writer.writerow(['Episode', 'A2C Length'])
-        for i in range(len(a2c_return[5])):
-            writer.writerow([i, a2c_return[5][i]])
-
+    # Plot rewards for PPO and A2C
     plt.figure(figsize=(10, 6))
-    plt.bar(agents, r_means, yerr=r_stds, capsize=10)
-    plt.title('Final Agent Return Comparison')
-    plt.ylabel('Mean Return')
-    plt.ylim(bottom=0)
-    for i, v in enumerate(r_means):
-        plt.text(i, v + 0.5, f'{v:.2f}', ha='center')
-    plt.savefig(f'iteration1/plots/{iteration}/agent_r_comparison.png')
-    plt.close()
-
-    plt.figure(figsize=(10, 6))
-    plt.bar(agents, l_means, yerr=l_stds, capsize=10)
-    plt.title('Final Agent Length Comparison')
-    plt.ylabel('Mean Length')
-    plt.ylim(bottom=0)
-    for i, v in enumerate(l_means):
-        plt.text(i, v + 0.5, f'{v:.2f}', ha='center')
-    plt.savefig(f'iteration1/plots/{iteration}/agent_l_comparison.png')
-    plt.close()
-
-    plt.figure(figsize=(10, 6))
-    plt.plot(ppo_return[4], label='PPO', marker='o', linestyle='-')
-    plt.plot(a2c_return[4], label='A2C', marker='s', linestyle='-')
+    for i in range(len(returns[4])):  # Assuming ppo_return[4] is a 2D array
+        plt.plot(returns[4][i], label=f'PPO Run {i+1}', marker='o', linestyle='-')
     plt.xlabel('Episodes')
     plt.ylabel('Reward')
-    plt.title('Reward Comparison of PPO, A2C, and Random Agent')
+    plt.title('Reward of PPO')
     plt.legend()
-    plt.savefig(f'iteration1/plots/{iteration}/agent_reward_over_time.png')
+    plt.savefig(f'iteration2/{reward}/{agent}_reward_over_time.png')
     plt.close()
 
+    # Plot rewards for PPO and A2C
     plt.figure(figsize=(10, 6))
-    plt.plot(ppo_return[5], label='PPO', marker='o', linestyle='-')
-    plt.plot(a2c_return[5], label='A2C', marker='s', linestyle='-')
+    for i in range(len(returns[5])):  # Assuming ppo_return[5] is a 2D array
+        plt.plot(returns[5][i], label=f'PPO Run {i+1}', marker='o', linestyle='-')
     plt.xlabel('Episodes')
-    plt.ylabel('Episode Length')
-    plt.title('Episode Length Over Time for PPO, A2C and Random Agents')
+    plt.ylabel('Length')
+    plt.title('Length of PPO')
     plt.legend()
-    plt.savefig(f'iteration1/plots/{iteration}/episode_length_over_time.png')
+    plt.savefig(f'iteration2/{reward}/{agent}_length_over_time.png')
     plt.close()
 
 def main():
-    iterations = ['Space1','Space2','Space3','Space4','Space5']
-    for iteration in iterations:
+    agents = [PPO, A2C]
+    agents_string = ['PPO', 'A2C']
+    rewards = [L2RPNReward, N1Reward, CloseToOverflowReward, CombinedReward, EconomicReward, EpisodeDurationReward, LinesCapacityReward, IncreasingFlatReward]
+    rewards_string  = ['L2RPNReward', 'N1Reward', 'CloseToOverflowReward', 'CombinedReward', 'EconomicReward', 'EpisodeDurationReward', 'LinesCapacityReward', 'IncreasingFlatReward']
+    
+    for agent_index, agent in enumerate(agents):
+        for reward_index, reward in enumerate(rewards):   
+            print(rewards_string[reward_index])
+            
+            r_mean_list, r_std_list = [], []
+            l_mean_list, l_std_list = [], []
+            random_r_mean_list, random_r_std_list = [], []
+            random_l_mean_list, random_l_std_list = [], []
+            reward_mean_list, length_mean_list = [], []
 
-        max_steps = 1000
-        env = create_env(max_steps,iteration)
+            for i in range(5):
+                env = create_env(agents_string[agent_index], reward)
 
-        ppo_reward = 0
-        a2c_reward = 0
+                model, reward, length = train(agent, f"{agents_string[agent_index]}_grid2op", env, rewards_string[reward_index])
 
-        # Train PPO
-        if not os.path.exists(f'iteration1/{iteration}/ppo_grid2op.zip'):
-            ppo_model, ppo_reward, ppo_length = train(PPO, "ppo_grid2op", env, iteration)
-        else:
-            ppo_model = PPO.load(f'iteration1/{iteration}/ppo_grid2op.zip', env=env)
+                reward_mean_list.append(reward)
+                length_mean_list.append(length)
 
-        # Train A2C
-        if not os.path.exists(f'iteration1/{iteration}/a2c_grid2op.zip'):
-            a2c_model, a2c_reward, a2c_length = train(A2C, "a2c_grid2op", env, iteration)
-        else:
-            a2c_model = A2C.load(f'iteration1/{iteration}/a2c_grid2op.zip', env=env)
-        
-        # Evaluate PPO
-        ppo_r_mean, ppo_r_std, ppo_l_mean, ppo_l_std = evaluate(env, ppo_model)
+                env = create_env(agents_string[agent_index], CombinedScaledReward, evaluate=True)
 
-        # Evaluate A2C
-        a2c_r_mean, a2c_r_std, a2c_l_mean, a2c_l_std = evaluate(env, a2c_model)
+                # Evaluate model
+                ppo_r_mean, ppo_r_std, ppo_l_mean, ppo_l_std = evaluate(env, model)
+                r_mean_list.append(ppo_r_mean)
+                r_std_list.append(ppo_r_std)
+                l_mean_list.append(ppo_l_mean)
+                l_std_list.append(ppo_l_std)
 
-        # Evaluate Random
-        random_r_mean, random_r_std, random_l_mean, random_l_std = evaluate(env, None, random_agent=True)
+                # Evaluate Random
+                random_r_mean, random_r_std, random_l_mean, random_l_std = evaluate(env, None, random_agent=True)
+                random_r_mean_list.append(random_r_mean)
+                random_r_std_list.append(random_r_std)
+                random_l_mean_list.append(random_l_mean)
+                random_l_std_list.append(random_l_std)
 
-        # Plot returns
-        plot_returns((random_r_mean, random_r_std, random_l_mean, random_l_std), (ppo_r_mean, ppo_r_std, ppo_l_mean, ppo_l_std, ppo_reward, ppo_length), (a2c_r_mean, a2c_r_std, a2c_l_mean, a2c_l_std, a2c_reward, a2c_length), iteration)
+            # Compute the average of the 5 agents
+            r_mean_avg = np.mean(r_mean_list)
+            r_std_avg = np.mean(r_std_list)
+            l_mean_avg = np.mean(l_mean_list)
+            l_std_avg = np.mean(l_std_list)
+
+            random_r_mean_avg = np.mean(random_r_mean_list)
+            random_r_std_avg = np.mean(random_r_std_list)
+            random_l_mean_avg = np.mean(random_l_mean_list)
+            random_l_std_avg = np.mean(random_l_std_list)
+
+            with open(f'iteration2{i}/{rewards_string[reward_index]}_{agents_string[agent_index]}_results.csv', mode='w', newline='') as file:
+                writer = csv.writer(file)
+                
+                # Write headers
+                writer.writerow(['Random R Mean Avg', 'Random R Std Avg', 'Random L Mean Avg', 'Random L Std Avg',
+                                'R Mean Avg', 'R Std Avg', 'L Mean Avg', 'L Std Avg',
+                                'Reward Mean List', 'Length Mean List'])
+                
+                writer.writerow([random_r_mean_avg, random_r_std_avg, random_l_mean_avg, random_l_std_avg,
+                                r_mean_avg, r_std_avg, l_mean_avg, l_std_avg,
+                                reward_mean_list, length_mean_list])
+
+            # Plot averaged returns
+            plot_returns(
+                (random_r_mean_avg, random_r_std_avg, random_l_mean_avg, random_l_std_avg), 
+                (r_mean_avg, r_std_avg, l_mean_avg, l_std_avg, reward_mean_list, length_mean_list), 
+                rewards_string[reward_index], agents_string[agent_index]
+            )
 
 if __name__ == "__main__":
     main()

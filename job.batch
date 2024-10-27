@@ -9,5 +9,6 @@
 
 python3 0-baseline.py &
 python3 0-iteration1.py &
+python3 0-iteration2.py &
 
 wait
